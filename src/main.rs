@@ -7,16 +7,13 @@
 use bsp::entry;
 use defmt::*;
 use defmt_rtt as _;
-use embedded_hal::digital::OutputPin;
+use embedded_hal::digital::StatefulOutputPin;
 use panic_probe as _;
 
-// Provide an alias for our BSP so we can switch targets quickly.
-// Uncomment the BSP you included in Cargo.toml, the rest of the code does not need to change.
 use rp_pico as bsp;
-// use sparkfun_pro_micro_rp2040 as bsp;
 
 use bsp::hal::{
-    clocks::{init_clocks_and_plls, Clock},
+    clocks::init_clocks_and_plls,
     pac,
     sio::Sio,
     watchdog::Watchdog,
@@ -26,14 +23,13 @@ use bsp::hal::{
 fn main() -> ! {
     info!("Program start");
     let mut pac = pac::Peripherals::take().unwrap();
-    let core = pac::CorePeripherals::take().unwrap();
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
     let sio = Sio::new(pac.SIO);
 
     // External high-speed crystal on the pico board is 12Mhz
-    let external_xtal_freq_hz = 12_000_000u32;
+    // let external_xtal_freq_hz = 12_000_000u32;
     let clocks = init_clocks_and_plls(
-        external_xtal_freq_hz,
+        bsp::XOSC_CRYSTAL_FREQ,
         pac.XOSC,
         pac.CLOCKS,
         pac.PLL_SYS,
@@ -41,10 +37,8 @@ fn main() -> ! {
         &mut pac.RESETS,
         &mut watchdog,
     )
-    .ok()
-    .unwrap();
-
-    let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
+        .ok()
+        .unwrap();
 
     let pins = bsp::Pins::new(
         pac.IO_BANK0,
@@ -53,34 +47,19 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    // This is the correct pin on the Raspberry Pico board. On other boards, even if they have an
-    // on-board LED, it might need to be changed.
-    //
-    // Notably, on the Pico W, the LED is not connected to any of the RP2040 GPIOs but to the cyw43 module instead.
-    // One way to do that is by using [embassy](https://github.com/embassy-rs/embassy/blob/main/examples/rp/src/bin/wifi_blinky.rs)
-    //
-    // If you have a Pico W and want to toggle a LED with a simple GPIO output pin, you can connect an external
-    // LED to one of the GPIO pins, and reference that pin here. Don't forget adding an appropriate resistor
-    // in series with the LED.
     let mut led_pin = pins.led.into_push_pull_output();
 
-    let mut x = 0;
+    let timer = bsp::hal::Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
+
+    let delay_in_ns = 800_000;
+
+    let mut old_mod: u32 = 0;
 
     loop {
-        info!("on!");
-        led_pin.set_high().unwrap();
-        delay.delay_ms(500);
-        info!("off!");
-        led_pin.set_low().unwrap();
-
-        if x == 10 {
-            x = 0;
-        } else {
-            x = x + 1;
+        let new_mod: u32 = timer.get_counter_low() % delay_in_ns;
+        if new_mod < old_mod {
+            led_pin.toggle().unwrap();
         }
-
-        delay.delay_ms(50 * x);
+        old_mod = new_mod;
     }
 }
-
-// End of file
