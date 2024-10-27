@@ -64,13 +64,22 @@ fn main() -> ! {
     // in series with the LED.
     let mut led_pin = pins.led.into_push_pull_output();
 
+    let mut x = 0;
+
     loop {
         info!("on!");
         led_pin.set_high().unwrap();
         delay.delay_ms(500);
         info!("off!");
         led_pin.set_low().unwrap();
-        delay.delay_ms(500);
+
+        if x == 10 {
+            x = 0;
+        } else {
+            x = x + 1;
+        }
+
+        delay.delay_ms(50 * x);
     }
 }
 
